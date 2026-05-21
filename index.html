@@ -4,24 +4,189 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CMI Office Lunch - Staff Portal</title>
-    <style>
-        body, html {
-            margin: 0;
-            padding: 0;
-            height: 100%;
-            overflow: hidden;
-            background-color: #ffffff;
-        }
-        iframe {
-            border: none;
-            width: 100%;
-            height: 100%;
-        }
-    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
-<body>
+<body class="bg-[#f8fafc] font-sans text-gray-800">
 
-    <iframe src="https://ais-dev-bytze2hjgprmgn3f7kkkli-582224567633.asia-east1.run.app"></iframe>
+    <div class="min-h-screen flex flex-col md:flex-row">
+        
+        <div class="flex-1 p-4 md:p-8 max-w-5xl mx-auto w-full">
+            <header class="mb-6 pb-4 flex justify-between items-center">
+                <div class="flex items-center gap-3">
+                    <div class="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-xs border border-gray-100">
+                        <i class="fa-solid fa-utensils text-blue-600 text-xl"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-2xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">CMI OFFICE LUNCH</h1>
+                        <p class="text-gray-400 text-xs font-semibold uppercase tracking-wider">Self-Service Lunch Ordering</p>
+                    </div>
+                </div>
+                <div class="bg-emerald-50 text-emerald-700 text-[11px] px-3 py-1.5 rounded-full font-bold flex items-center gap-1.5 shadow-xs border border-emerald-100">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> 24/7 ORDERING OPEN
+                </div>
+            </header>
 
+            <div class="mb-8">
+                <div class="relative w-full">
+                    <i class="fa-solid fa-magnifying-glass absolute left-4 top-4 text-gray-400"></i>
+                    <input type="text" id="search-bar" placeholder="Search lunch items or categories..." class="w-full pl-11 pr-4 py-3 rounded-2xl border border-gray-200 bg-white shadow-xs focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-sm">
+                </div>
+            </div>
+
+            <div id="products-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                </div>
+        </div>
+
+        <div class="w-full md:w-80 bg-white border-t md:border-t-0 md:border-l border-gray-100 p-6 flex flex-col md:h-screen md:sticky md:top-0 shadow-sm">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                    <i class="fa-solid fa-basket-shopping text-blue-600"></i> New Booking
+                </h2>
+                <button onclick="window.clearCart()" class="text-gray-400 hover:text-red-500 transition-colors">
+                    <i class="fa-solid fa-trash-can"></i>
+                </button>
+            </div>
+            
+            <div id="cart-items" class="flex-1 overflow-y-auto space-y-3 pr-1 my-2 min-h-[150px]">
+                <div id="empty-cart-msg" class="flex flex-col items-center justify-center py-12 text-center">
+                    <i class="fa-solid fa-cart-shopping text-gray-200 text-4xl mb-3"></i>
+                    <p class="text-gray-400 text-xs font-medium">Booking cart is empty</p>
+                </div>
+            </div>
+            
+            <div class="border-t border-gray-100 pt-4 mt-auto">
+                <div class="flex justify-between items-center font-bold text-slate-950 mb-4">
+                    <span class="text-sm text-gray-500 font-medium">Total Cost</span>
+                    <span class="text-xl font-extrabold flex items-baseline gap-1">
+                        <span class="text-xs font-bold text-gray-400">Rs.</span>
+                        <span id="cart-total">0</span>
+                    </span>
+                </div>
+                <button id="place-order-btn" onclick="placeOrder()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-xl shadow-md shadow-blue-500/10 transition-all text-sm flex items-center justify-center gap-2 cursor-pointer">
+                    <i class="fa-regular fa-circle-check"></i> Confirm Order
+                </button>
+            </div>
+        </div>
+
+    </div>
+
+    <script type="module">
+        // EXACT PORTAL VIEW ITEMS AND IMAGES
+        const products = [
+            { id: "1", name: "Shami Kabab", price: 150, category: "CMI", img: "https://images.unsplash.com/photo-1606491956689-2ea866880c84?w=500&auto=format&fit=crop&q=60" },
+            { id: "2", name: "Anda Cheese", price: 130, category: "CMI", img: "https://images.unsplash.com/photo-1525351484163-7529414344d8?w=500&auto=format&fit=crop&q=60" },
+            { id: "3", name: "French Fries", price: 100, category: "CMI", img: "https://images.unsplash.com/photo-1573080496219-bb080dd4f877?w=500&auto=format&fit=crop&q=60" },
+            { id: "4", name: "Cheese Paratha", price: 180, category: "CMI", img: "https://images.unsplash.com/photo-1626132647523-66f5bf380027?w=500&auto=format&fit=crop&q=60" },
+            { id: "5", name: "Prince Biscuit", price: 30, category: "CMI", img: "https://images.unsplash.com/photo-1558961312-50346c099887?w=500&auto=format&fit=crop&q=60" },
+            { id: "6", name: "Dal Chawal", price: 150, category: "CMI", img: "https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=500&auto=format&fit=crop&q=60" },
+            { id: "7", name: "White Naan", price: 30, category: "CMI", img: "https://images.unsplash.com/photo-1601050690597-df056fb4ce78?w=500&auto=format&fit=crop&q=60" },
+            { id: "8", name: "Dhei", price: 50, category: "CMI", img: "https://images.unsplash.com/photo-1488477181946-6428a0291777?w=500&auto=format&fit=crop&q=60" }
+        ];
+
+        let cart = [];
+
+        window.addEventListener('DOMContentLoaded', () => {
+            renderGrid();
+        });
+
+        function renderGrid(filterText = '') {
+            const grid = document.getElementById('products-grid');
+            grid.innerHTML = '';
+            
+            const filtered = products.filter(p => p.name.toLowerCase().includes(filterText.toLowerCase()));
+
+            filtered.forEach(product => {
+                const card = document.createElement('div');
+                card.className = "bg-white border border-gray-100 rounded-2xl p-3 shadow-xs flex flex-col justify-between hover:shadow-md transition-all";
+                card.innerHTML = `
+                    <div>
+                        <img src="${product.img}" alt="${product.name}" class="w-full h-28 object-cover rounded-xl mb-3">
+                        <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">${product.category}</span>
+                        <h3 class="text-sm font-bold text-slate-800 mt-0.5 truncate">${product.name}</h3>
+                    </div>
+                    <div class="mt-4 flex items-center justify-between border-t border-slate-50 pt-2">
+                        <span class="text-sm font-extrabold text-slate-900">Rs. ${product.price}</span>
+                        <button onclick="window.addToCart('${product.id}')" class="bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white font-bold w-7 h-7 rounded-lg text-sm transition-all flex items-center justify-center cursor-pointer">
+                            +
+                        </button>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        window.addToCart = function(id) {
+            const item = products.find(p => p.id === id);
+            const existing = cart.find(c => c.id === id);
+            if (existing) {
+                existing.qty++;
+            } else {
+                cart.push({ ...item, qty: 1 });
+            }
+            updateCart();
+        };
+
+        window.updateQty = function(id, delta) {
+            const item = cart.find(c => c.id === id);
+            if (!item) return;
+            item.qty += delta;
+            if (item.qty <= 0) cart = cart.filter(c => c.id !== id);
+            updateCart();
+        };
+
+        window.clearCart = function() {
+            cart = [];
+            updateCart();
+        };
+
+        function updateCart() {
+            const container = document.getElementById('cart-items');
+            const emptyMsg = document.getElementById('empty-cart-msg');
+            
+            const rows = container.querySelectorAll('.cart-row');
+            rows.forEach(r => r.remove());
+
+            if (cart.length === 0) {
+                emptyMsg.classList.remove('hidden');
+                document.getElementById('cart-total').innerText = "0";
+                return;
+            }
+
+            emptyMsg.classList.add('hidden');
+            let total = 0;
+
+            cart.forEach(item => {
+                total += (item.price * item.qty);
+                const row = document.createElement('div');
+                row.className = "cart-row bg-slate-50 rounded-xl p-3 flex justify-between items-center border border-slate-100";
+                row.innerHTML = `
+                    <div class="flex-1 min-w-0 pr-2">
+                        <h4 class="font-bold text-xs text-slate-800 truncate">${item.name}</h4>
+                        <span class="text-[10px] text-gray-400 font-semibold">Rs. ${item.price}</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button onclick="window.updateQty('${item.id}', -1)" class="w-5 h-5 bg-white border border-gray-200 rounded-md text-xs font-bold shadow-2xs cursor-pointer flex items-center justify-center text-gray-500 hover:bg-gray-50">-</button>
+                        <span class="font-bold text-xs text-slate-800 w-4 text-center">${item.qty}</span>
+                        <button onclick="window.updateQty('${item.id}', 1)" class="w-5 h-5 bg-white border border-gray-200 rounded-md text-xs font-bold shadow-2xs cursor-pointer flex items-center justify-center text-gray-500 hover:bg-gray-50">+</button>
+                    </div>
+                `;
+                container.appendChild(row);
+            });
+
+            document.getElementById('cart-total').innerText = total;
+        }
+
+        window.placeOrder = function() {
+            if (cart.length === 0) return;
+            alert("✅ Order Placed Successfully!");
+            cart = [];
+            updateCart();
+        };
+
+        document.getElementById('search-bar').addEventListener('input', (e) => {
+            renderGrid(e.target.value);
+        });
+    </script>
 </body>
 </html>
