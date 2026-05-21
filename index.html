@@ -1,100 +1,424 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CMI Lunch & Dinner Management System</title>
-    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        /* Custom Scrollbar for elegant look */
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: #f1f5f9; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-    </style>
-</head>
-<body class="bg-[#f8fafc] font-sans text-slate-800 antialiased" id="app-root">
+import { initializeApp } from "firebase/app";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
 
-    <nav class="bg-slate-900 text-white shadow-md sticky top-0 z-50 px-4 py-3 flex justify-between items-center border-b border-slate-800">
-        <div class="flex items-center gap-3">
-            <div class="w-10 h-10 bg-orange-500 rounded-xl flex items-center justify-center shadow-md">
-                <i class="fa-solid fa-utensils text-white text-lg"></i>
-            </div>
-            <div>
-                <h1 class="text-lg font-black tracking-tight text-white">CMI FOOD PORTAL</h1>
-                <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Office Management System</p>
-            </div>
+const firebaseConfig = {
+  projectId: "cmi-dinner",
+  appId: "1:50034805358:web:55d2d57e74d349dcc1b47f",
+  apiKey: "AIzaSyAzlQuqqnBdZ6WP5Ggabqn14UiQtNKdAlw",
+  authDomain: "cmi-dinner.firebaseapp.com",
+  firestoreDatabaseId: "ai-studio-8f005d3c-5a01-4ad6-adeb-80419d5a15b5",
+  storageBucket: "cmi-dinner.firebasestorage.app",
+  messagingSenderId: "50034805358"
+};
+
+export const app = initializeApp(firebaseConfig);
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+});
+import React, { useState, useEffect } from 'react';
+import { db } from './firebase';
+import { collection, onSnapshot, addDoc, deleteDoc, doc, updateDoc } from 'firebase/firestore';
+import { Utensils, Users, UserCheck, Search, ShoppingBasket, Plus, Trash2, Edit, ClipboardList, Wallet, Layers, ShieldCheck } from 'lucide-react';
+
+interface Product {
+  id: string;
+  name: string;
+  price: number;
+  category: string;
+  image: string;
+}
+
+interface CartItem extends Product {
+  qty: number;
+}
+
+interface Order {
+  id: string;
+  employeeName: string;
+  items: string;
+  total: number;
+  status: string;
+  date: string;
+}
+
+export default function App() {
+  const [currentView, setCurrentView] = useState<'staff' | 'admin'>('staff');
+  const [products, setProducts] = useState<Product[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  
+  // Modal Fields
+  const [showModal, setShowModal] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [formName, setFormName] = useState('');
+  const [formPrice, setFormPrice] = useState('');
+  const [formCategory, setFormCategory] = useState('');
+  const [formImage, setFormImage] = useState('');
+
+  // Firestore Live Listeners
+  useEffect(() => {
+    const unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
+      const items: Product[] = [];
+      snapshot.forEach((doc) => items.push({ id: doc.id, ...doc.data() } as Product));
+      setProducts(items);
+    });
+
+    const unsubOrders = onSnapshot(collection(db, 'orders'), (snapshot) => {
+      const items: Order[] = [];
+      snapshot.forEach((doc) => items.push({ id: doc.id, ...doc.data() } as Order));
+      setOrders(items.sort((a,b) => b.date.localeCompare(a.date)));
+    });
+
+    return () => {
+      unsubProducts();
+      unsubOrders();
+    };
+  }, []);
+
+  // Cart Functions
+  const addToCart = (product: Product) => {
+    setCart(prev => {
+      const existing = prev.find(item => item.id === product.id);
+      if (existing) {
+        return prev.map(item => item.id === product.id ? { ...item, qty: item.qty + 1 } : item);
+      }
+      return [...prev, { ...product, qty: 1 }];
+    });
+  };
+
+  const updateQty = (id: string, amount: number) => {
+    setCart(prev => prev.map(item => {
+      if (item.id === id) {
+        const nextQty = item.qty + amount;
+        return nextQty > 0 ? { ...item, qty: nextQty } : null;
+      }
+      return item;
+    }).filter(Boolean) as CartItem[]);
+  };
+
+  const checkoutOrder = async () => {
+    if (cart.length === 0) return;
+    const summary = cart.map(c => `${c.name} (${c.qty})`).join(', ');
+    const totalAmount = cart.reduce((acc, c) => acc + (c.price * c.qty), 0);
+
+    try {
+      await addDoc(collection(db, 'orders'), {
+        employeeName: "Sanaullah Khan",
+        employeeId: "EMP-109",
+        userId: "superadmin_uid",
+        items: summary,
+        total: totalAmount,
+        status: "Pending",
+        date: new Date().toISOString()
+      });
+      alert("✅ Order Placed into Cloud System!");
+      setCart([]);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // CRUD Operations
+  const handleSaveProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const payload = {
+      name: formName,
+      price: Number(formPrice),
+      category: formCategory,
+      image: formImage
+    };
+
+    if (editId) {
+      await updateDoc(doc(db, 'products', editId), payload);
+    } else {
+      await addDoc(collection(db, 'products'), payload);
+    }
+    
+    setShowModal(false);
+    setFormName('');
+    setFormPrice('');
+    setFormCategory('');
+    setFormImage('');
+    setEditId(null);
+  };
+
+  const handleEditInit = (product: Product) => {
+    setEditId(product.id);
+    setFormName(product.name);
+    setFormPrice(String(product.price));
+    setFormCategory(product.category);
+    setFormImage(product.image);
+    setShowModal(true);
+  };
+
+  const handleDeleteProduct = async (id: string) => {
+    if (window.confirm("Delete this item permanently?")) {
+      await deleteDoc(doc(db, 'products', id));
+    }
+  };
+
+  const filteredProducts = products.filter(p => 
+    p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    p.category.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  return (
+    <div className="min-h-screen bg-[#f8fafc] text-slate-800 antialiased font-sans">
+      
+      {/* GLOBAL NAVBAR */}
+      <nav className="bg-slate-900 text-white sticky top-0 z-50 px-6 py-3.5 flex justify-between items-center shadow-md border-b border-slate-800">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-orange-500 rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/20">
+            <Utensils className="text-white w-5 h-5" />
+          </div>
+          <div>
+            <h1 className="text-base font-black tracking-tight text-white uppercase">CMI Food Portal</h1>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Operational Engine</p>
+          </div>
         </div>
+
+        {/* VIEW NAVIGATION TABS */}
+        <div className="bg-slate-800 p-1 rounded-xl flex gap-1 border border-slate-700/40">
+          <button 
+            onClick={() => setCurrentView('staff')}
+            className={`px-4 py-1.5 rounded-lg text-xs font-bold tracking-wide transition-all cursor-pointer ${currentView === 'staff' ? 'bg-orange-500 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}
+          >
+            <Users className="w-3.5 h-3.5 inline mr-1" /> Staff View
+          </button>
+          <button 
+            onClick={() => setCurrentView('admin')}
+            className={`px-4 py-1.5 rounded-lg text-xs font-bold tracking-wide transition-all cursor-pointer ${currentView === 'admin' ? 'bg-orange-500 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}
+          >
+            <ShieldCheck className="w-3.5 h-3.5 inline mr-1" /> Admin Panel
+          </button>
+        </div>
+      </nav>
+
+      {/* VIEW DELEGATOR CONTROLLER */}
+      <main className="p-4 md:p-6 max-w-7xl mx-auto">
         
-        <div class="bg-slate-800 p-1 rounded-xl flex gap-1 border border-slate-700/50">
-            <button onclick="switchView('staff')" id="tab-staff" class="px-4 py-1.5 rounded-lg text-xs font-bold tracking-wide transition-all cursor-pointer bg-orange-500 text-white shadow-xs">
-                <i class="fa-solid fa-users mr-1"></i> Staff View
-            </button>
-            <button onclick="switchView('admin')" id="tab-admin" class="px-4 py-1.5 rounded-lg text-xs font-bold tracking-wide transition-all cursor-pointer text-slate-400 hover:text-white">
-                <i class="fa-solid fa-user-shield mr-1"></i> Admin Panel
-            </button>
-        </div>
-    </nav>
-
-    <main class="min-h-[calc(100vh-65px)]">
-
-        <div id="view-staff" class="flex flex-col lg:flex-row dynamic-view">
-            <div class="flex-1 p-4 md:p-6 max-w-6xl mx-auto w-full">
-                <header class="mb-6 flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b border-slate-100 pb-4">
-                    <div>
-                        <h2 class="text-xl font-extrabold text-slate-900 tracking-tight">Today's Active Menu</h2>
-                        <p class="text-xs text-slate-400 mt-0.5">Select your meal and confirm your booking instantly.</p>
-                    </div>
-                    <div class="self-start bg-emerald-50 border border-emerald-100 text-emerald-700 text-[11px] font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-xs">
-                        <span class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span> SYSTEM ONLINE (24/7)
-                    </div>
-                </header>
-
-                <div class="relative w-full mb-6">
-                    <i class="fa-solid fa-magnifying-glass absolute left-4 top-3.5 text-slate-400 text-sm"></i>
-                    <input type="text" id="staff-search" oninput="renderStaffGrid()" placeholder="Search dishes, drinks or snacks..." class="w-full pl-11 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white shadow-xs text-sm focus:outline-hidden focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all">
-                </div>
-
-                <div id="staff-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-                    </div>
-            </div>
-
-            <div class="w-full lg:w-80 bg-white border-t lg:border-t-0 lg:border-l border-slate-100 p-5 flex flex-col lg:h-[calc(100vh-65px)] lg:sticky lg:top-[65px] shadow-xs">
-                <div class="flex justify-between items-center mb-4 pb-2 border-b border-slate-50">
-                    <h3 class="font-bold text-slate-900 text-sm uppercase tracking-wider flex items-center gap-2">
-                        <i class="fa-solid fa-basket-shopping text-orange-500"></i> Current Booking
-                    </h3>
-                    <button onclick="clearCart()" class="text-slate-400 hover:text-red-500 text-xs font-semibold transition-all cursor-pointer">Clear All</button>
-                </div>
-
-                <div id="basket-container" class="flex-1 overflow-y-auto space-y-2.5 my-2 min-h-[120px]">
-                    <div id="basket-empty" class="flex flex-col items-center justify-center py-12 text-center">
-                        <i class="fa-solid fa-clipboard-list text-slate-200 text-4xl mb-2"></i>
-                        <p class="text-slate-400 text-xs font-medium">Your basket is empty</p>
-                    </div>
-                </div>
-
-                <div class="border-t border-slate-100 pt-4 mt-auto">
-                    <div class="flex justify-between items-center mb-4">
-                        <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Payable</span>
-                        <span class="text-xl font-black text-slate-900 flex items-baseline gap-0.5">
-                            <span class="text-xs font-bold text-slate-400">Rs.</span>
-                            <span id="basket-total">0</span>
-                        </span>
-                    </div>
-                    <button onclick="submitOrder()" class="w-full bg-slate-900 hover:bg-orange-500 text-white font-bold py-3 px-4 rounded-xl shadow-md transition-all text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer">
-                        <i class="fa-regular fa-circle-check text-sm"></i> Confirm Order
-                    </button>
-                </div>
-            </div>
-        </div>
-
-
-        <div id="view-admin" class="p-4 md:p-6 max-w-7xl mx-auto w-full hidden dynamic-view">
-            <header class="mb-6 pb-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        {/* ================= STAFF INTERFACE SCREEN ================= */}
+        {currentView === 'staff' && (
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
+            
+            {/* Left Frame: Inventory Display */}
+            <div className="lg:col-span-3">
+              <header className="mb-6 flex justify-between items-center border-b border-slate-100 pb-4">
                 <div>
-                    <h2 class="text-2xl font-black text-slate-900 tracking-tight">Management Dashboard</h2>
-                    <p class="text-xs text-slate-500 mt-0.5">Add products, check live sales metrics, and monitor incoming logs.</p>
+                  <h2 class="text-xl font-extrabold text-slate-900 tracking-tight">Active Menu List</h2>
+                  <p class="text-xs text-slate-400 mt-0.5">Select items to instantly place your cloud lunch book entries.</p>
                 </div>
-                <button onclick="openAddModal()" class="bg-orange-500 hover:bg-orange-600 text-white
+                <div className="bg-emerald-50 border border-emerald-100 text-emerald-700 text-[10px] font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5">
+                  <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span> PORTAL LIVE
+                </div>
+              </header>
+
+              <div className="relative w-full mb-6">
+                <Search className="absolute left-4 top-3 text-slate-400 w-4 h-4" />
+                <input 
+                  type="text" 
+                  placeholder="Search lunch items, mains, snacks..." 
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-11 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-medium focus:outline-hidden focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all"
+                />
+              </div>
+
+              {/* Chote compact design cards pattern representation */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                {filteredProducts.map(p => (
+                  <div key={p.id} className="bg-white border border-slate-100 rounded-2xl p-2.5 shadow-2xs flex flex-col justify-between hover:shadow-md transition-all group">
+                    <div>
+                      <div className="relative overflow-hidden rounded-xl mb-2 bg-slate-100">
+                        <img src={p.image} alt={p.name} className="w-full h-24 object-cover group-hover:scale-105 transition-all duration-200" />
+                        <span className="absolute top-2 left-2 bg-slate-950/70 text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded-md uppercase tracking-wide">{p.category}</span>
+                      </div>
+                      <h4 className="text-xs font-bold text-slate-800 line-clamp-1">{p.name}</h4>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between pt-2 border-t border-slate-50">
+                      <span className="text-xs font-black text-slate-900">Rs. {p.price}</span>
+                      <button 
+                        onClick={() => addToCart(p)}
+                        className="bg-slate-900 text-white hover:bg-orange-500 w-6 h-6 rounded-lg text-xs font-black transition-all flex items-center justify-center cursor-pointer"
+                      >+</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Right Frame: Checkout Basket */}
+            <div className="bg-white border border-slate-100 p-4 rounded-2xl shadow-xs sticky top-20">
+              <h3 className="font-bold text-slate-900 text-xs uppercase tracking-wider flex items-center gap-2 mb-4 border-b border-slate-50 pb-2">
+                <ShoppingBasket className="text-orange-500 w-4 h-4" /> Selected Basket
+              </h3>
+
+              <div className="space-y-2.5 max-h-[300px] overflow-y-auto my-2 pr-1">
+                {cart.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-10 text-center">
+                    <ClipboardList className="text-slate-200 w-8 h-8 mb-2" />
+                    <p className="text-slate-400 text-[11px] font-semibold">Your basket is empty</p>
+                  </div>
+                ) : (
+                  cart.map(item => (
+                    <div key={item.id} className="bg-slate-50 border border-slate-100 rounded-xl p-2 flex justify-between items-center">
+                      <div className="min-w-0 pr-1">
+                        <h5 className="font-bold text-xs text-slate-800 truncate">{item.name}</h5>
+                        <p className="text-[10px] text-slate-400 font-bold">Rs. {item.price}</p>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <button onClick={() => updateQty(item.id, -1)} className="w-5 h-5 bg-white border border-slate-200 rounded-md text-[11px] font-black text-slate-500 hover:bg-slate-100 flex items-center justify-center cursor-pointer shadow-3xs">-</button>
+                        <span className="font-extrabold text-xs text-slate-800 w-4 text-center">{item.qty}</span>
+                        <button onClick={() => updateQty(item.id, 1)} className="w-5 h-5 bg-white border border-slate-200 rounded-md text-[11px] font-black text-slate-500 hover:bg-slate-100 flex items-center justify-center cursor-pointer shadow-3xs">+</button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="border-t border-slate-100 pt-4 mt-4">
+                <div className="flex justify-between items-center mb-4">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Gross Total</span>
+                  <span className="text-base font-black text-slate-900">Rs. {cart.reduce((acc, c) => acc + (c.price * c.qty), 0)}</span>
+                </div>
+                <button 
+                  onClick={checkoutOrder}
+                  disabled={cart.length === 0}
+                  className="w-full bg-slate-900 hover:bg-orange-500 disabled:bg-slate-200 disabled:cursor-not-allowed text-white font-bold py-2.5 px-4 rounded-xl shadow-xs transition-all text-xs uppercase tracking-wider cursor-pointer"
+                >Confirm Order</button>
+              </div>
+            </div>
+
+          </div>
+        )}
+
+        {/* ================= SCREEN 2: ADMIN MANAGEMENT DASHBOARD ================= */}
+        {currentView === 'admin' && (
+          <div>
+            <header className="mb-6 pb-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-black text-slate-900 tracking-tight">Admin Operation Terminal</h2>
+                <p className="text-xs text-slate-500 mt-0.5">Manage live records, active inventory menu cards, and monitor streaming logs.</p>
+              </div>
+              <button 
+                onClick={() => { setEditId(null); setShowModal(true); }}
+                className="bg-orange-500 hover:bg-orange-600 text-white font-bold px-4 py-2.5 rounded-xl text-xs uppercase tracking-wider flex items-center gap-2 shadow-md cursor-pointer transition-all"
+              >
+                <Plus className="w-4 h-4" /> Add Food Item
+              </button>
+            </header>
+
+            {/* QUICK MONITORING COUNTERS */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+              <div className="bg-white border border-slate-100 p-4 rounded-2xl shadow-2xs flex items-center gap-4">
+                <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center"><Layers className="w-5 h-5" /></div>
+                <div><p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Products</p><h4 className="text-lg font-black text-slate-800">{products.length}</h4></div>
+              </div>
+              <div className="bg-white border border-slate-100 p-4 rounded-2xl shadow-2xs flex items-center gap-4">
+                <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center"><UserCheck className="w-5 h-5" /></div>
+                <div><p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Orders Streamed</p><h4 className="text-lg font-black text-slate-800">{orders.length}</h4></div>
+              </div>
+              <div className="bg-white border border-slate-100 p-4 rounded-2xl shadow-2xs flex items-center gap-4">
+                <div className="w-10 h-10 bg-orange-50 text-orange-600 rounded-xl flex items-center justify-center"><Wallet className="w-5 h-5" /></div>
+                <div><p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Gross Turnover</p><h4 className="text-lg font-black text-slate-800">Rs. {orders.reduce((acc,curr)=>acc+curr.total, 0)}</h4></div>
+              </div>
+            </div>
+
+            {/* SPLIT DATA WRAPPERS */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              
+              {/* Product Inventory Datatable Grid */}
+              <div className="lg:col-span-2 bg-white border border-slate-100 rounded-2xl p-4 shadow-2xs">
+                <h3 className="font-extrabold text-slate-900 text-xs uppercase tracking-wider mb-4">Inventory Records</h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 text-slate-400 font-bold border-b border-slate-100 uppercase tracking-wider">
+                        <th className="p-3">Item Details</th>
+                        <th className="p-3">Category</th>
+                        <th className="p-3">Price</th>
+                        <th className="p-3 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50 font-medium text-slate-700">
+                      {products.map(p => (
+                        <tr key={p.id} className="hover:bg-slate-50/50 transition-all">
+                          <td className="p-3">
+                            <div className="flex items-center gap-2.5">
+                              <img src={p.image} className="w-8 h-8 rounded-lg object-cover border border-slate-100" />
+                              <span className="font-bold text-slate-800">{p.name}</span>
+                            </div>
+                          </td>
+                          <td className="p-3"><span className="bg-slate-100 px-2 py-0.5 rounded-md text-[9px] font-bold text-slate-500 uppercase tracking-wider">{p.category}</span></td>
+                          <td className="p-3 font-bold text-slate-900">Rs. {p.price}</td>
+                          <td className="p-3 text-right">
+                            <div className="flex gap-1 justify-end">
+                              <button onClick={() => handleEditInit(p)} className="w-7 h-7 rounded-lg text-blue-600 bg-blue-50 hover:bg-blue-600 hover:text-white flex items-center justify-center cursor-pointer transition-all"><Edit className="w-3.5 h-3.5" /></button>
+                              <button onClick={() => handleDeleteProduct(p.id)} className="w-7 h-7 rounded-lg text-red-600 bg-red-50 hover:bg-red-600 hover:text-white flex items-center justify-center cursor-pointer transition-all"><Trash2 className="w-3.5 h-3.5" /></button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Realtime Database Sync Logs Streamer */}
+              <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-2xs">
+                <h3 className="font-extrabold text-slate-900 text-xs uppercase tracking-wider mb-4">Live Activity Streams</h3>
+                <div className="space-y-3 max-h-[400px] overflow-y-auto pr-1">
+                  {orders.map(o => (
+                    <div key={o.id} className="bg-slate-50 border border-slate-100 rounded-xl p-3 relative">
+                      <span className="absolute top-3 right-3 text-[9px] font-bold text-slate-400 bg-white border border-slate-100 px-1.5 py-0.5 rounded-md">Live</span>
+                      <h5 className="font-extrabold text-xs text-slate-900">{o.employeeName}</h5>
+                      <p className="text-[10px] text-slate-400 font-bold mt-0.5">Status: <span className="text-emerald-600 font-black">{o.status}</span> • <span className="text-orange-500">Rs. {o.total}</span></p>
+                      <p className="text-[11px] text-slate-600 mt-2 bg-white rounded-lg p-2 border border-slate-100/40 font-medium">{o.items}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+            </div>
+          </div>
+        )}
+
+      </main>
+
+      {/* DYNAMIC FORM MODAL COMPONENT */}
+      {showModal && (
+        <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl border border-slate-100 max-w-md w-full p-5 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <h3 className="font-black text-slate-900 text-sm border-b border-slate-50 pb-2 mb-4">{editId ? 'Modify Product Entry' : 'Create New Menu Asset'}</h3>
+            <form onSubmit={handleSaveProduct} className="space-y-4 text-xs font-semibold text-slate-500">
+              <div>
+                <label className="block mb-1 uppercase tracking-wider">Item Name</label>
+                <input type="text" required value={formName} onChange={e => setFormName(e.target.value)} className="w-full p-2.5 rounded-xl border border-slate-200 text-slate-800 font-bold focus:outline-hidden focus:border-orange-500 text-xs" placeholder="e.g., Special Aloo Biryani" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block mb-1 uppercase tracking-wider">Price (PKR)</label>
+                  <input type="number" required value={formPrice} onChange={e => setFormPrice(e.target.value)} className="w-full p-2.5 rounded-xl border border-slate-200 text-slate-800 font-bold focus:outline-hidden focus:border-orange-500 text-xs" placeholder="180" />
+                </div>
+                <div>
+                  <label className="block mb-1 uppercase tracking-wider">Category Tag</label>
+                  <input type="text" required value={formCategory} onChange={e => setFormCategory(e.target.value)} className="w-full p-2.5 rounded-xl border border-slate-200 text-slate-800 font-bold focus:outline-hidden focus:border-orange-500 text-xs" placeholder="e.g., CMI Lunch" />
+                </div>
+              </div>
+              <div>
+                <label className="block mb-1 uppercase tracking-wider">Image Asset URL Link</label>
+                <input type="url" required value={formImage} onChange={e => setFormImage(e.target.value)} className="w-full p-2.5 rounded-xl border border-slate-200 text-slate-800 font-medium focus:outline-hidden focus:border-orange-500 text-xs" placeholder="https://images.unsplash.com/..." />
+              </div>
+              <div className="pt-2 flex gap-2 justify-end">
+                <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 rounded-xl bg-slate-100 text-slate-600 font-bold cursor-pointer hover:bg-slate-200 transition-all">Cancel</button>
+                <button type="submit" className="px-5 py-2 rounded-xl bg-orange-500 text-white font-bold shadow-md cursor-pointer hover:bg-orange-600 transition-all">Commit Save</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
