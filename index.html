@@ -35,21 +35,22 @@
       onAuthStateChanged 
     } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
-    // ASLI CMI LUNCH CONFIGURATION
+    // AAPKA VALUE CONFIGURATION CODE (JO LIVE MEIN AA RAHA HAI)
     const firebaseConfig = {
-      projectId: "cmi-dinner",
-      appId: "1:50034805358:web:55d2d57e74d349dcc1b47f",
       apiKey: "AIzaSyAzlQuqqnBdZ6WP5Ggabqn14UiQtNKdAlw",
       authDomain: "cmi-dinner.firebaseapp.com",
+      projectId: "cmi-dinner",
       storageBucket: "cmi-dinner.firebasestorage.app",
-      messagingSenderId: "50034805358"
+      messagingSenderId: "50034805358",
+      appId: "1:50034805358:web:55d2d57e74d349dcc1b47f"
     };
 
+    // Initialize Firebase
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const provider = new GoogleAuthProvider();
     
-    // NEW DEPRECATION-FREE CACHE SETUP
+    // Modern Offline Cache Setup (No Warnings)
     const db = initializeFirestore(app, {
       localCache: persistentLocalCache({
         tabManager: persistentMultipleTabManager()
@@ -69,7 +70,7 @@
     function updateUI() {
       const root = document.getElementById('root');
 
-      // 1. AUTH GATEWAY
+      // 1. LOGIN SCREEN GATEWAY
       if (!userSession) {
         root.innerHTML = `
           <div class="flex items-center justify-center min-h-screen bg-[#f8fafc] px-4">
@@ -90,13 +91,13 @@
         return;
       }
 
-      // 2. LOADING STATE DURING PROFILE VERIFICATION
+      // 2. LOADING STATE
       if (!isUserVerified) {
         root.innerHTML = `
           <div class="flex items-center justify-center min-h-screen bg-[#f8fafc]">
             <div class="text-center">
               <div class="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-              <p class="text-xs font-bold text-slate-500 uppercase tracking-wider">Verifying System Authorization Profile...</p>
+              <p class="text-xs font-bold text-slate-500 uppercase tracking-wider">Verifying and Auto-Registering Profile...</p>
             </div>
           </div>
         `;
@@ -138,7 +139,7 @@
                       <div class="relative overflow-hidden rounded-2xl bg-slate-50 aspect-square w-full mb-3.5">
                         <img src="${p.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c'}" class="w-full h-full object-cover rounded-2xl" onerror="this.src='https://images.unsplash.com/photo-1546069901-ba9599a7e63c'" />
                       </div>
-                      <span class="text-[9px] text-slate-300 font-extrabold tracking-wider block mb-0.5 uppercase">${p.category || 'CMI'}</span>
+                      <span class="text-[9px] text-slate-300 font-extrabold tracking-wider block mb-0.5 uppercase">${p.category || 'Lunch'}</span>
                       <h4 class="text-xs font-black text-slate-800 tracking-tight line-clamp-1">${p.name}</h4>
                     </div>
                     <div class="mt-4 flex items-center justify-between">
@@ -259,8 +260,7 @@
 
       root.innerHTML = `
         <div class="max-w-7xl mx-auto px-12 py-8">
-          
-          <!-- SYSTEM BANNER -->
+          <!-- CORE MODULE NAVIGATION -->
           <header class="flex justify-between items-center mb-8">
             <div class="flex items-center gap-4">
               <div class="w-12 h-12 rounded-full overflow-hidden border border-slate-100 shadow-xs flex items-center justify-center bg-white">
@@ -316,10 +316,10 @@
               email: emailInput,
               role: roleSelect
             });
-            alert('✅ Employee Registered Successfully!');
+            alert('✅ Employee Added Successfully!');
             document.getElementById('add-user-form').reset();
           } catch (err) {
-            alert('❌ Profile insertion failed!');
+            alert('❌ Profile update failed!');
           }
         }
       });
@@ -331,7 +331,7 @@
         userSession = result.user;
         checkSystemCenterAccess(userSession.email);
       } catch (error) {
-        console.error("Auth Exception:", error);
+        console.error("Auth System Error:", error);
       }
     }
 
@@ -388,16 +388,16 @@
       try {
         await updateDoc(doc(db, 'users', id), { role: newRole });
       } catch (err) {
-        alert('❌ Error updating role status!');
+        alert('❌ Error updating system authority status!');
       }
     };
 
     window.deleteUserFromSystem = async function(id) {
-      if (confirm('Completely clear this employee profile registration?')) {
+      if (confirm('Are you sure you want to completely remove this employee profile?')) {
         try {
           await deleteDoc(doc(db, 'users', id));
         } catch (err) {
-          alert('❌ Action cancellation failed!');
+          alert('❌ Action clearance failed!');
         }
       }
     };
@@ -410,7 +410,7 @@
           const dishName = data.name || data.Name || data.title || '';
           const dishPrice = data.price || data.Price || data.rate || 0;
           const dishImage = data.image || data.Image || data.pic || data.imageUrl || '';
-          const dishCategory = data.category || data.Category || 'CMI';
+          const dishCategory = data.category || data.Category || 'Lunch';
 
           if (dishName) {
             items.push({ 
