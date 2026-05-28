@@ -1,17 +1,494 @@
-// Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CMI Office Lunch - Portal</title>
+  
+  <!-- Tailwind CSS & Lucide Icons -->
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-[#fcfdfe] text-slate-700 font-sans antialiased min-h-screen">
 
-// Your web app's Firebase configuration
-const firebaseConfig = {
-  apiKey: "AIzaSyAzlQuqqnBdZ6WP5Ggabqn14UiQtNKdAlw",
-  authDomain: "cmi-dinner.firebaseapp.com",
-  projectId: "cmi-dinner",
-  storageBucket: "cmi-dinner.firebasestorage.app",
-  messagingSenderId: "50034805358",
-  appId: "1:50034805358:web:55d2d57e74d349dcc1b47f"
-};
+  <div id="root"></div>
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
+  <!-- Firebase Core SDK Integrations -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { 
+      initializeFirestore, 
+      collection, 
+      onSnapshot, 
+      addDoc,
+      doc,
+      updateDoc,
+      deleteDoc,
+      persistentLocalCache,
+      persistentMultipleTabManager
+    } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { 
+      getAuth, 
+      signInWithPopup, 
+      GoogleAuthProvider, 
+      signOut, 
+      onAuthStateChanged 
+    } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+
+    // ASLI CMI LUNCH CONFIGURATION
+    const firebaseConfig = {
+      projectId: "cmi-dinner",
+      appId: "1:50034805358:web:55d2d57e74d349dcc1b47f",
+      apiKey: "AIzaSyAzlQuqqnBdZ6WP5Ggabqn14UiQtNKdAlw",
+      authDomain: "cmi-dinner.firebaseapp.com",
+      storageBucket: "cmi-dinner.firebasestorage.app",
+      messagingSenderId: "50034805358"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const provider = new GoogleAuthProvider();
+    
+    // NEW DEPRECATION-FREE CACHE SETUP
+    const db = initializeFirestore(app, {
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager()
+      })
+    });
+
+    // Core System State
+    let userSession = null;
+    let currentUserRole = null; 
+    let isUserVerified = false;
+    let products = [];
+    let registeredUsers = []; 
+    let cart = [];
+    let searchQuery = '';
+    let currentTab = 'menu'; 
+
+    function updateUI() {
+      const root = document.getElementById('root');
+
+      // 1. AUTH GATEWAY
+      if (!userSession) {
+        root.innerHTML = `
+          <div class="flex items-center justify-center min-h-screen bg-[#f8fafc] px-4">
+            <div class="bg-white rounded-3xl p-10 shadow-[0_10px_40px_-15px_rgba(0,0,0,0.05)] border border-slate-100 max-w-md w-full text-center tracking-wide">
+              <div class="w-16 h-16 bg-[#2563eb] rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-md">
+                <i data-lucide="utensils-crosses" class="text-white w-7 h-7"></i>
+              </div>
+              <h2 class="text-xl font-black tracking-tight text-slate-900 uppercase">CMI OFFICE LUNCH</h2>
+              <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1 mb-8">Employee Self-Service Portal</p>
+              <button id="login-btn" class="w-full bg-[#2563eb] hover:bg-blue-700 text-white text-xs font-black py-4 rounded-xl uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition-all">
+                <i data-lucide="log-in" class="w-4 h-4"></i> Sign In With Google
+              </button>
+            </div>
+          </div>
+        `;
+        lucide.createIcons();
+        document.getElementById('login-btn')?.addEventListener('click', () => handleGoogleSignIn());
+        return;
+      }
+
+      // 2. LOADING STATE DURING PROFILE VERIFICATION
+      if (!isUserVerified) {
+        root.innerHTML = `
+          <div class="flex items-center justify-center min-h-screen bg-[#f8fafc]">
+            <div class="text-center">
+              <div class="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+              <p class="text-xs font-bold text-slate-500 uppercase tracking-wider">Verifying System Authorization Profile...</p>
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      let mainContent = '';
+
+      // TAB: LUNCH MENU VIEW
+      if (currentTab === 'menu') {
+        const filteredProducts = products.filter(p => 
+          p.name.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+        const grossTotal = cart.reduce((acc, c) => acc + (c.price * c.qty), 0);
+
+        mainContent = `
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+            <div class="lg:col-span-8 space-y-6">
+              <div class="relative w-full">
+                <i data-lucide="search" class="absolute left-4 top-4 text-slate-300 w-4 h-4"></i>
+                <input 
+                  type="text" 
+                  id="search-input"
+                  placeholder="Search lunch items or categories..." 
+                  value="${searchQuery}"
+                  class="w-full pl-12 pr-4 py-3.5 rounded-2xl bg-white text-xs font-medium text-slate-800 placeholder-slate-300 focus:outline-none border border-slate-100/70 shadow-[0_4px_30px_rgba(0,0,0,0.01)]"
+                />
+              </div>
+
+              <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-5">
+                ${filteredProducts.length === 0 ? `
+                  <div class="col-span-full py-20 text-center bg-white border border-slate-100 rounded-3xl p-8">
+                    <i data-lucide="chef-hat" class="mx-auto text-slate-300 w-12 h-12 mb-3 stroke-1"></i>
+                    <p class="text-slate-500 text-xs font-black uppercase tracking-wider">No Dishes On Display</p>
+                  </div>
+                ` : filteredProducts.map(p => `
+                  <div class="bg-white border border-slate-100/40 rounded-3xl p-3 shadow-[0_8px_30px_rgb(0,0,0,0.01)] flex flex-col justify-between group">
+                    <div>
+                      <div class="relative overflow-hidden rounded-2xl bg-slate-50 aspect-square w-full mb-3.5">
+                        <img src="${p.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c'}" class="w-full h-full object-cover rounded-2xl" onerror="this.src='https://images.unsplash.com/photo-1546069901-ba9599a7e63c'" />
+                      </div>
+                      <span class="text-[9px] text-slate-300 font-extrabold tracking-wider block mb-0.5 uppercase">${p.category || 'CMI'}</span>
+                      <h4 class="text-xs font-black text-slate-800 tracking-tight line-clamp-1">${p.name}</h4>
+                    </div>
+                    <div class="mt-4 flex items-center justify-between">
+                      <span class="text-[11px] font-extrabold text-[#2563eb]">Rs. ${p.price}</span>
+                      <button onclick="window.addToCart('${p.id}')" class="bg-[#f0f5ff] text-[#2563eb] hover:bg-[#2563eb] hover:text-white w-7 h-7 rounded-xl text-sm font-black transition-all flex items-center justify-center cursor-pointer">+</button>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+
+            <!-- BASKET SIDEBAR -->
+            <div class="lg:col-span-4 bg-white border border-slate-100 rounded-3xl p-6 shadow-[0_8px_40px_rgba(0,0,0,0.01)] min-h-[440px] flex flex-col justify-between">
+              <div>
+                <div class="flex justify-between items-center mb-6 border-b border-slate-50 pb-4">
+                  <h3 class="font-black text-slate-900 text-sm tracking-tight">New Booking</h3>
+                  <button onclick="window.clearBasketCart()" class="text-slate-300 hover:text-red-500 transition-colors cursor-pointer">
+                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                  </button>
+                </div>
+                <div class="space-y-4 max-h-[280px] overflow-y-auto pr-1">
+                  ${cart.length === 0 ? `
+                    <div class="flex flex-col items-center justify-center py-20 text-center opacity-30">
+                      <i data-lucide="shopping-cart" class="text-slate-300 w-8 h-8 mb-2 stroke-1"></i>
+                      <p class="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Booking cart is empty</p>
+                    </div>
+                  ` : cart.map(item => `
+                    <div class="flex justify-between items-center bg-slate-50/50 border border-slate-100 rounded-xl p-2.5">
+                      <div class="min-w-0 flex-1 pr-2">
+                        <h5 class="font-black text-xs text-slate-800 truncate">${item.name}</h5>
+                        <p class="text-[10px] text-slate-400 font-bold">Rs. ${item.price}</p>
+                      </div>
+                      <div class="flex items-center gap-2 bg-white rounded-lg border border-slate-100 p-0.5">
+                        <button onclick="window.updateQty('${item.id}', -1)" class="w-4 h-4 text-slate-500 font-bold text-xs flex items-center justify-center hover:bg-slate-50 rounded cursor-pointer">-</button>
+                        <span class="font-black text-xs text-slate-900 w-4 text-center">${item.qty}</span>
+                        <button onclick="window.updateQty('${item.id}', 1)" class="w-4 h-4 text-slate-500 font-bold text-xs flex items-center justify-center hover:bg-slate-50 rounded cursor-pointer">+</button>
+                      </div>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+              <div class="border-t border-slate-100 pt-5">
+                <div class="flex justify-between items-center mb-6">
+                  <span class="text-xs font-bold text-slate-400">Total Cost</span>
+                  <span class="text-lg font-black text-slate-900">Rs. ${grossTotal}</span>
+                </div>
+                <button id="checkout-btn" ${cart.length === 0 ? 'disabled' : ''} class="w-full bg-[#3b82f6] hover:bg-blue-600 disabled:bg-[#93c5fd] disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-xl text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer">
+                  <i data-lucide="check-circle-2" class="w-4 h-4"></i> Confirm Order
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      } 
+      
+      // TAB: SYSTEM CENTER (ADMIN CONTROL)
+      else if (currentTab === 'system-center' && currentUserRole === 'admin') {
+        mainContent = `
+          <div class="bg-white border border-slate-100 rounded-3xl p-8 shadow-xs max-w-4xl mx-auto space-y-8">
+            <div>
+              <h2 class="text-lg font-black text-slate-900 uppercase tracking-tight flex items-center gap-2">
+                <i data-lucide="users" class="text-blue-600 w-5 h-5"></i> Manage Employees & Security
+              </h2>
+              <p class="text-[11px] text-slate-400 font-medium mt-1">View auto-registered employees, manage actions, and grant system Admin authority.</p>
+            </div>
+
+            <form id="add-user-form" class="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50/50 p-4 rounded-2xl border border-slate-100">
+              <div class="md:col-span-2">
+                <label class="block text-[10px] font-black uppercase text-slate-400 mb-1.5 tracking-wider">Employee Google Email</label>
+                <input type="email" id="new-user-email" required placeholder="example@gmail.com" class="w-full bg-white border border-slate-100 rounded-xl px-4 py-2.5 text-xs font-medium text-slate-800 focus:outline-none" />
+              </div>
+              <div>
+                <label class="block text-[10px] font-black uppercase text-slate-400 mb-1.5 tracking-wider">System Authority Role</label>
+                <div class="flex gap-2">
+                  <select id="new-user-role" class="bg-white border border-slate-100 rounded-xl px-3 py-2.5 text-xs font-bold text-slate-700 focus:outline-none flex-1">
+                    <option value="user">User (Employee)</option>
+                    <option value="admin">Admin (Full Control)</option>
+                  </select>
+                  <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-black px-4 rounded-xl text-xs uppercase cursor-pointer transition-all">Add</button>
+                </div>
+              </div>
+            </form>
+
+            <div class="border border-slate-100 rounded-2xl overflow-hidden">
+              <table class="w-full text-left border-collapse">
+                <thead>
+                  <tr class="bg-slate-50 border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-wider">
+                    <th class="py-3.5 px-6">Employee Email Address</th>
+                    <th class="py-3.5 px-6">System Authority</th>
+                    <th class="py-3.5 px-6 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-50 text-xs font-medium text-slate-700">
+                  ${registeredUsers.map(u => `
+                    <tr class="hover:bg-slate-50/30 transition-colors">
+                      <td class="py-4 px-6 font-semibold">${u.email}</td>
+                      <td class="py-4 px-6">
+                        <span class="px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider ${u.role === 'admin' ? 'bg-amber-50 text-amber-600 border border-amber-100' : 'bg-blue-50 text-blue-600 border border-blue-100'}">
+                          ${u.role}
+                        </span>
+                      </td>
+                      <td class="py-4 px-6 text-right space-x-2">
+                        <button onclick="window.toggleUserRole('${u.id}', '${u.role}')" class="text-blue-600 hover:text-blue-800 font-bold uppercase text-[10px] tracking-wider cursor-pointer transition-colors">
+                          Make ${u.role === 'admin' ? 'User' : 'Admin'}
+                        </button>
+                        <button onclick="window.deleteUserFromSystem('${u.id}')" class="text-red-500 hover:text-red-700 font-bold uppercase text-[10px] tracking-wider cursor-pointer transition-colors ${u.email === userSession.email ? 'hidden' : ''}">
+                          Remove
+                        </button>
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `;
+      }
+
+      root.innerHTML = `
+        <div class="max-w-7xl mx-auto px-12 py-8">
+          
+          <!-- SYSTEM BANNER -->
+          <header class="flex justify-between items-center mb-8">
+            <div class="flex items-center gap-4">
+              <div class="w-12 h-12 rounded-full overflow-hidden border border-slate-100 shadow-xs flex items-center justify-center bg-white">
+                <i data-lucide="utensils" class="text-slate-800 w-5 h-5"></i>
+              </div>
+              <div>
+                <h1 class="text-xl font-black text-slate-900 tracking-tight">CMI OFFICE LUNCH</h1>
+                <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Self-Service Lunch Ordering</p>
+              </div>
+            </div>
+            
+            <div class="flex items-center gap-4">
+              ${currentUserRole === 'admin' ? `
+                <div class="flex bg-slate-100 rounded-xl p-1 gap-1 border border-slate-200/50">
+                  <button id="tab-menu" class="px-4 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all cursor-pointer ${currentTab === 'menu' ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-500 hover:text-slate-800'}">Menu Portal</button>
+                  <button id="tab-system" class="px-4 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all cursor-pointer ${currentTab === 'system-center' ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-500 hover:text-slate-800'}">System Center</button>
+                </div>
+              ` : ''}
+              
+              <div class="flex items-center gap-2 border border-slate-100 rounded-xl p-1 bg-white pl-3 pr-3">
+                <span class="text-xs font-black text-slate-800">${userSession.displayName || userSession.email}</span>
+                <button id="logout-btn" class="text-slate-400 hover:text-red-500 transition-all cursor-pointer ml-1">
+                  <i data-lucide="log-out" class="w-4 h-4"></i>
+                </button>
+              </div>
+            </div>
+          </header>
+
+          <main>${mainContent}</main>
+        </div>
+      `;
+
+      lucide.createIcons();
+
+      document.getElementById('logout-btn')?.addEventListener('click', () => handleGoogleSignOut());
+      document.getElementById('search-input')?.addEventListener('input', (e) => {
+        searchQuery = e.target.value;
+        updateUI();
+      });
+      document.getElementById('checkout-btn')?.addEventListener('click', () => checkoutOrder());
+
+      document.getElementById('tab-menu')?.addEventListener('click', () => { currentTab = 'menu'; updateUI(); });
+      document.getElementById('tab-system')?.addEventListener('click', () => { currentTab = 'system-center'; updateUI(); });
+
+      document.getElementById('add-user-form')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const emailInput = document.getElementById('new-user-email').value.trim().toLowerCase();
+        const roleSelect = document.getElementById('new-user-role').value;
+        
+        if (emailInput) {
+          try {
+            await addDoc(collection(db, 'users'), {
+              email: emailInput,
+              role: roleSelect
+            });
+            alert('✅ Employee Registered Successfully!');
+            document.getElementById('add-user-form').reset();
+          } catch (err) {
+            alert('❌ Profile insertion failed!');
+          }
+        }
+      });
+    }
+
+    async function handleGoogleSignIn() {
+      try {
+        const result = await signInWithPopup(auth, provider);
+        userSession = result.user;
+        checkSystemCenterAccess(userSession.email);
+      } catch (error) {
+        console.error("Auth Exception:", error);
+      }
+    }
+
+    async function handleGoogleSignOut() {
+      await signOut(auth);
+      userSession = null;
+      currentUserRole = null;
+      isUserVerified = false;
+      updateUI();
+    }
+
+    async function checkSystemCenterAccess(email) {
+      if (!email) return;
+      onSnapshot(collection(db, 'users'), async (snapshot) => {
+        const usersList = [];
+        let matched = false;
+        let matchedRole = 'user';
+        
+        snapshot.forEach((doc) => {
+          const uData = doc.data();
+          usersList.push({ id: doc.id, ...uData });
+          
+          if (uData.email && uData.email.toLowerCase() === email.toLowerCase()) {
+            matchedRole = uData.role || 'user';
+            matched = true;
+          }
+        });
+
+        // AUTO-REGISTRATION RULES
+        if (!matched) {
+          const definedRole = (email.toLowerCase() === "sanaullahkhanyousafzai7@gmail.com") ? 'admin' : 'user';
+          try {
+            await addDoc(collection(db, 'users'), { 
+              email: email.toLowerCase(), 
+              role: definedRole 
+            });
+            currentUserRole = definedRole;
+            isUserVerified = true;
+          } catch(e) {
+            console.error("Auto registration write failed:", e);
+          }
+        } else {
+          currentUserRole = matchedRole;
+          isUserVerified = true;
+        }
+
+        registeredUsers = usersList;
+        updateUI();
+      });
+    }
+
+    window.toggleUserRole = async function(id, currentRole) {
+      const newRole = currentRole === 'admin' ? 'user' : 'admin';
+      try {
+        await updateDoc(doc(db, 'users', id), { role: newRole });
+      } catch (err) {
+        alert('❌ Error updating role status!');
+      }
+    };
+
+    window.deleteUserFromSystem = async function(id) {
+      if (confirm('Completely clear this employee profile registration?')) {
+        try {
+          await deleteDoc(doc(db, 'users', id));
+        } catch (err) {
+          alert('❌ Action cancellation failed!');
+        }
+      }
+    };
+
+    function initDatabaseStreams() {
+      onSnapshot(collection(db, 'products'), (snapshot) => {
+        const items = [];
+        snapshot.forEach((doc) => {
+          const data = doc.data();
+          const dishName = data.name || data.Name || data.title || '';
+          const dishPrice = data.price || data.Price || data.rate || 0;
+          const dishImage = data.image || data.Image || data.pic || data.imageUrl || '';
+          const dishCategory = data.category || data.Category || 'CMI';
+
+          if (dishName) {
+            items.push({ 
+              id: doc.id, 
+              name: dishName,
+              price: Number(dishPrice),
+              image: dishImage,
+              category: dishCategory
+            });
+          }
+        });
+        products = items;
+        updateUI();
+      });
+    }
+
+    onAuthStateChanged(auth, (user) => {
+      userSession = user;
+      if (user) {
+        checkSystemCenterAccess(user.email);
+      } else {
+        updateUI();
+      }
+    });
+
+    window.addToCart = function(productId) {
+      const product = products.find(p => p.id === productId);
+      if (!product) return;
+      const existing = cart.find(item => item.id === productId);
+      if (existing) {
+        existing.qty += 1;
+      } else {
+        cart.push({ ...product, qty: 1 });
+      }
+      updateUI();
+    };
+
+    window.updateQty = function(productId, amount) {
+      const item = cart.find(c => c.id === productId);
+      if (!item) return;
+      item.qty += amount;
+      if (item.qty <= 0) {
+        cart = cart.filter(c => c.id !== productId);
+      }
+      updateUI();
+    };
+
+    window.clearBasketCart = function() {
+      cart = [];
+      updateUI();
+    };
+
+    async function checkoutOrder() {
+      if (cart.length === 0) return;
+      const summary = cart.map(c => `${c.name} (${c.qty})`).join(', ');
+      const totalAmount = cart.reduce((acc, c) => acc + (c.price * c.qty), 0);
+
+      const orderPayload = {
+        employeeName: userSession.displayName || 'Unknown Employee',
+        employeeEmail: userSession.email,
+        userId: userSession.uid,
+        items: summary,
+        total: totalAmount,
+        status: "Pending",
+        date: new Date().toISOString()
+      };
+
+      try {
+        await addDoc(collection(db, 'orders'), orderPayload);
+        alert(`🎉 Order Confirmed Successfully!`);
+        cart = [];
+        updateUI();
+      } catch (e) {
+        alert("❌ Order sync error!");
+      }
+    }
+
+    initDatabaseStreams();
+  </script>
+</body>
+</html>
